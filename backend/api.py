@@ -5,11 +5,13 @@ Exposes endpoints for running backtests and retrieving universe data.
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 import logging
-from typing import Dict
+from typing import Dict, AsyncGenerator
 import uuid
 from datetime import datetime
+import json
+import asyncio
 
 from models import (
     BacktestConfig, BacktestResult, UniverseResponse,
@@ -171,6 +173,138 @@ async def run_backtest(config: BacktestConfig):
             success=False,
             message=f"Backtest failed: {str(e)}"
         )
+
+
+@app.post("/api/backtest/stream")
+async def run_backtest_stream(config: BacktestConfig):
+    """
+    Run a trading strategy backtest with streaming per-stock results.
+
+    Args:
+        config: BacktestConfig with strategy code and parameters
+
+    Returns:
+        Server-Sent Events stream with progress updates
+    """
+    async def generate_backtest_stream() -> AsyncGenerator[str, None]:
+        job_id = str(uuid.uuid4())
+        logger.info(f"Starting streaming backtest job {job_id}")
+
+        try:
+            # Validate strategy code first
+            sandbox = get_sandbox()
+            try:
+                sandbox.validate(config.strategy_code)
+            except Exception as e:
+                error_msg = json.dumps({
+                    "type": "error",
+                    "message": f"Strategy validation failed: {str(e)}"
+                })
+                yield f"data: {error_msg}\n\n"
+                return
+
+            # Get tickers
+            loader = get_loader()
+            if config.universe == 'sp500':
+                tickers = loader.get_sp500_tickers()
+            elif config.custom_tickers:
+                tickers = config.custom_tickers
+            else:
+                error_msg = json.dumps({
+                    "type": "error",
+                    "message": "Must specify universe='sp500' or provide custom_tickers"
+                })
+                yield f"data: {error_msg}\n\n"
+                return
+
+            # Send initial progress
+            init_msg = json.dumps({
+                "type": "init",
+                "total_tickers": len(tickers),
+                "job_id": job_id
+            })
+            yield f"data: {init_msg}\n\n"
+
+            # Load data
+            logger.info(f"Loading data for {len(tickers)} tickers...")
+            data_dict = loader.get_bulk_data(
+                tickers,
+                config.start_date,
+                config.end_date,
+                config.interval
+            )
+
+            if not data_dict:
+                error_msg = json.dumps({
+                    "type": "error",
+                    "message": "Failed to load any ticker data"
+                })
+                yield f"data: {error_msg}\n\n"
+                return
+
+            # Create engine
+            from engine_streaming import StreamingBacktestEngine
+            engine = StreamingBacktestEngine(config)
+
+            # Run backtest with streaming
+            completed_count = 0
+            all_ticker_results = []
+
+            async for ticker_result in engine.run_backtest_streaming(data_dict):
+                completed_count += 1
+                all_ticker_results.append(ticker_result)
+
+                # Send progress update
+                progress_msg = json.dumps({
+                    "type": "progress",
+                    "ticker": ticker_result.get("ticker"),
+                    "completed": completed_count,
+                    "total": len(data_dict),
+                    "percentage": round((completed_count / len(data_dict)) * 100, 1),
+                    "ticker_result": ticker_result
+                })
+                yield f"data: {progress_msg}\n\n"
+
+                # Small delay to ensure message is sent
+                await asyncio.sleep(0.01)
+
+            # Send final aggregated results
+            from engine import BacktestEngine
+            regular_engine = BacktestEngine(config)
+
+            # Convert ticker results to TickerPerformance objects
+            from models import TickerPerformance
+            ticker_perfs = []
+            for tr in all_ticker_results:
+                if tr.get("success"):
+                    ticker_perfs.append(TickerPerformance(**tr))
+
+            final_result = regular_engine._aggregate_results(ticker_perfs)
+            final_result.config = config
+
+            final_msg = json.dumps({
+                "type": "complete",
+                "result": final_result.dict()
+            })
+            yield f"data: {final_msg}\n\n"
+
+        except Exception as e:
+            logger.error(f"Streaming backtest failed: {e}", exc_info=True)
+            error_msg = json.dumps({
+                "type": "error",
+                "message": f"Backtest failed: {str(e)}"
+            })
+            yield f"data: {error_msg}\n\n"
+
+    return StreamingResponse(
+        generate_backtest_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 
 @app.get("/api/backtest/{job_id}", response_model=BacktestResult)

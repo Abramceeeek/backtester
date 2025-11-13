@@ -89,71 +89,77 @@ export default function BacktestForm({ onSubmit, loading }) {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
+    <div className="bg-gray-800 rounded-xl border border-gray-700 p-6">
       <form onSubmit={handleSubmit}>
         {/* Strategy Code Editor */}
         <div className="mb-6">
-          <div className="flex justify-between items-center mb-2">
-            <label className="block text-sm font-semibold text-gray-700">
-              Strategy Code
+          <div className="flex justify-between items-center mb-3">
+            <label className="block text-sm font-semibold text-gray-200">
+              Your Strategy Code
             </label>
             <button
               type="button"
               onClick={loadTemplate}
-              className="text-sm text-blue-600 hover:text-blue-800"
+              className="text-sm text-green-400 hover:text-green-300 font-medium transition-colors"
             >
               Load Template
             </button>
           </div>
-          <textarea
-            value={strategyCode}
-            onChange={(e) => setStrategyCode(e.target.value)}
-            className="w-full h-96 font-mono text-sm border border-gray-300 rounded-md p-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="Enter your strategy code here..."
-            required
-          />
-          <p className="mt-2 text-xs text-gray-500">
-            Define a function named 'strategy' that takes (data, state) and returns a signal dict
+          <div className="relative">
+            <textarea
+              value={strategyCode}
+              onChange={(e) => setStrategyCode(e.target.value)}
+              className="w-full h-96 font-mono text-sm bg-gray-900 text-gray-100 border border-gray-600 rounded-lg p-4 focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-none"
+              placeholder="Enter your strategy code here..."
+              spellCheck="false"
+              required
+            />
+            <div className="absolute top-3 right-3 text-xs text-gray-500 bg-gray-800/80 px-2 py-1 rounded">
+              Python
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-gray-400">
+            Define a function named 'strategy' that takes (data, state) and returns a signal dict. <span className="text-green-400">pd</span> and <span className="text-green-400">np</span> are pre-loaded.
           </p>
         </div>
 
         {/* Basic Configuration */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Start Date
             </label>
             <input
               type="date"
               value={config.start_date}
               onChange={(e) => handleConfigChange('start_date', e.target.value)}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-gray-900 border border-gray-600 text-gray-100 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-green-500 focus:border-green-500"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               End Date
             </label>
             <input
               type="date"
               value={config.end_date}
               onChange={(e) => handleConfigChange('end_date', e.target.value)}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-gray-900 border border-gray-600 text-gray-100 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-green-500 focus:border-green-500"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Initial Capital ($)
             </label>
             <input
               type="number"
               value={config.initial_capital}
               onChange={(e) => handleConfigChange('initial_capital', parseFloat(e.target.value))}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-gray-900 border border-gray-600 text-gray-100 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-green-500 focus:border-green-500"
               min="1000"
               step="1000"
               required
@@ -161,14 +167,14 @@ export default function BacktestForm({ onSubmit, loading }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Position Size (0-1)
             </label>
             <input
               type="number"
               value={config.position_size}
               onChange={(e) => handleConfigChange('position_size', parseFloat(e.target.value))}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-gray-900 border border-gray-600 text-gray-100 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-green-500 focus:border-green-500"
               min="0.01"
               max="1"
               step="0.01"
@@ -182,38 +188,41 @@ export default function BacktestForm({ onSubmit, loading }) {
           <button
             type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+            className="text-sm text-green-400 hover:text-green-300 font-medium transition-colors flex items-center"
           >
-            {showAdvanced ? '▼' : '▶'} Advanced Settings
+            <svg className={`w-4 h-4 mr-1 transform transition-transform ${showAdvanced ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            Advanced Settings
           </button>
         </div>
 
         {/* Advanced Configuration */}
         {showAdvanced && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 bg-gray-50 rounded-md">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 bg-gray-900/50 rounded-lg border border-gray-700">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 Max Positions
               </label>
               <input
                 type="number"
                 value={config.max_positions}
                 onChange={(e) => handleConfigChange('max_positions', parseInt(e.target.value))}
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
+                className="w-full bg-gray-900 border border-gray-600 text-gray-100 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-green-500"
                 min="1"
                 max="100"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 Commission (%)
               </label>
               <input
                 type="number"
                 value={config.commission * 100}
                 onChange={(e) => handleConfigChange('commission', parseFloat(e.target.value) / 100)}
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
+                className="w-full bg-gray-900 border border-gray-600 text-gray-100 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-green-500"
                 min="0"
                 max="1"
                 step="0.01"
@@ -221,14 +230,14 @@ export default function BacktestForm({ onSubmit, loading }) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 Slippage (%)
               </label>
               <input
                 type="number"
                 value={config.slippage * 100}
                 onChange={(e) => handleConfigChange('slippage', parseFloat(e.target.value) / 100)}
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
+                className="w-full bg-gray-900 border border-gray-600 text-gray-100 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-green-500"
                 min="0"
                 max="1"
                 step="0.01"
@@ -242,10 +251,10 @@ export default function BacktestForm({ onSubmit, loading }) {
           <button
             type="submit"
             disabled={loading}
-            className={`px-6 py-3 rounded-md font-semibold text-white transition-colors ${
+            className={`px-8 py-3 rounded-lg font-semibold text-white transition-all transform hover:scale-105 ${
               loading
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-blue-600 hover:bg-blue-700'
+                ? 'bg-gray-600 cursor-not-allowed'
+                : 'bg-green-600 hover:bg-green-500 shadow-lg shadow-green-500/30'
             }`}
           >
             {loading ? 'Running Backtest...' : 'Run Backtest'}

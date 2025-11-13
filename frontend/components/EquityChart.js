@@ -1,6 +1,6 @@
 /**
- * EquityChart component - Displays equity curve chart
- * Simple SVG-based line chart for equity visualization
+ * EquityChart component - Displays equity curve chart with dark theme
+ * Enhanced SVG-based line chart for equity visualization
  */
 
 import { useMemo } from 'react';
@@ -76,13 +76,20 @@ export default function EquityChart({ data }) {
 
   if (!chartData) {
     return (
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <p className="text-gray-600">No equity data available</p>
+      <div className="text-center py-12">
+        <svg className="w-16 h-16 text-gray-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+        <p className="text-gray-400 text-lg">No equity data available</p>
+        <p className="text-gray-500 text-sm mt-2">Run a backtest to see the equity curve</p>
       </div>
     );
   }
 
   const formatCurrency = (num) => {
+    if (num >= 1000000) {
+      return `$${(num / 1000000).toFixed(1)}M`;
+    }
     return `$${(num / 1000).toFixed(0)}K`;
   };
 
@@ -91,11 +98,13 @@ export default function EquityChart({ data }) {
     return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
   };
 
-  return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <h3 className="text-xl font-bold text-gray-900 mb-4">Equity Curve</h3>
+  const isProfit = data[data.length - 1].equity >= data[0].equity;
 
-      <div className="overflow-x-auto">
+  return (
+    <div className="space-y-4">
+      <h3 className="text-lg font-semibold text-gray-200">Portfolio Equity Over Time</h3>
+
+      <div className="overflow-x-auto bg-gray-750 rounded-lg p-4 border border-gray-700">
         <svg
           width={chartData.width}
           height={chartData.height}
@@ -108,7 +117,8 @@ export default function EquityChart({ data }) {
             y={chartData.padding.top}
             width={chartData.chartWidth}
             height={chartData.chartHeight}
-            fill="#f9fafb"
+            fill="#1f2937"
+            rx="4"
           />
 
           {/* Grid lines */}
@@ -119,15 +129,17 @@ export default function EquityChart({ data }) {
                 y1={chartData.padding.top + line.y}
                 x2={chartData.padding.left + chartData.chartWidth}
                 y2={chartData.padding.top + line.y}
-                stroke="#e5e7eb"
+                stroke="#374151"
                 strokeWidth="1"
+                strokeDasharray="4,4"
               />
               <text
                 x={chartData.padding.left - 10}
                 y={chartData.padding.top + line.y + 4}
                 textAnchor="end"
-                fontSize="12"
-                fill="#6b7280"
+                fontSize="11"
+                fill="#9ca3af"
+                fontFamily="monospace"
               >
                 {formatCurrency(line.value)}
               </text>
@@ -139,108 +151,96 @@ export default function EquityChart({ data }) {
             <text
               key={idx}
               x={chartData.padding.left + label.x}
-              y={chartData.padding.top + chartData.chartHeight + 20}
+              y={chartData.padding.top + chartData.chartHeight + 25}
               textAnchor="middle"
-              fontSize="12"
-              fill="#6b7280"
+              fontSize="11"
+              fill="#9ca3af"
             >
               {formatDate(label.date)}
             </text>
           ))}
 
+          {/* Area under curve */}
+          <path
+            d={`${chartData.pathData} L ${chartData.chartWidth} ${chartData.chartHeight} L 0 ${chartData.chartHeight} Z`}
+            fill={`url(#gradient-${isProfit ? 'green' : 'red'})`}
+            opacity="0.2"
+            transform={`translate(${chartData.padding.left}, ${chartData.padding.top})`}
+          />
+
           {/* Equity line */}
           <path
             d={chartData.pathData}
             fill="none"
-            stroke="#2563eb"
-            strokeWidth="2"
+            stroke={isProfit ? '#10b981' : '#ef4444'}
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
             transform={`translate(${chartData.padding.left}, ${chartData.padding.top})`}
           />
 
-          {/* Area under curve */}
-          <path
-            d={`${chartData.pathData} L ${chartData.chartWidth} ${chartData.chartHeight} L 0 ${chartData.chartHeight} Z`}
-            fill="url(#gradient)"
-            opacity="0.3"
-            transform={`translate(${chartData.padding.left}, ${chartData.padding.top})`}
-          />
-
-          {/* Gradient definition */}
+          {/* Gradient definitions */}
           <defs>
-            <linearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#2563eb" stopOpacity="0.6" />
-              <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
+            <linearGradient id="gradient-green" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#10b981" stopOpacity="0.8" />
+              <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
+            </linearGradient>
+            <linearGradient id="gradient-red" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#ef4444" stopOpacity="0.8" />
+              <stop offset="100%" stopColor="#ef4444" stopOpacity="0" />
             </linearGradient>
           </defs>
 
-          {/* Chart title */}
-          <text
-            x={chartData.width / 2}
-            y={20}
-            textAnchor="middle"
-            fontSize="14"
-            fontWeight="600"
-            fill="#111827"
-          >
-            Portfolio Equity Over Time
-          </text>
-
           {/* Y-axis label */}
           <text
-            x={20}
+            x={25}
             y={chartData.height / 2}
             textAnchor="middle"
             fontSize="12"
-            fill="#6b7280"
-            transform={`rotate(-90, 20, ${chartData.height / 2})`}
+            fill="#9ca3af"
+            fontWeight="500"
+            transform={`rotate(-90, 25, ${chartData.height / 2})`}
           >
-            Equity ($)
+            Portfolio Value
           </text>
 
           {/* X-axis label */}
           <text
             x={chartData.width / 2}
-            y={chartData.height - 10}
+            y={chartData.height - 5}
             textAnchor="middle"
             fontSize="12"
-            fill="#6b7280"
+            fill="#9ca3af"
+            fontWeight="500"
           >
-            Date
+            Time Period
           </text>
         </svg>
       </div>
 
       {/* Summary stats below chart */}
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        <div className="grid grid-cols-3 gap-4 text-center">
-          <div>
-            <p className="text-xs text-gray-600">Starting Equity</p>
-            <p className="font-semibold text-gray-900">
-              {formatCurrency(data[0].equity)}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-600">Final Equity</p>
-            <p className="font-semibold text-gray-900">
-              {formatCurrency(data[data.length - 1].equity)}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-600">Total Change</p>
-            <p
-              className={`font-semibold ${
-                data[data.length - 1].equity >= data[0].equity
-                  ? 'text-green-600'
-                  : 'text-red-600'
-              }`}
-            >
-              {(
-                ((data[data.length - 1].equity - data[0].equity) / data[0].equity) *
-                100
-              ).toFixed(2)}
-              %
-            </p>
-          </div>
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-gray-750 rounded-lg p-4 border border-gray-700">
+          <p className="text-xs text-gray-400 mb-1">Starting Equity</p>
+          <p className="font-bold text-lg text-gray-100">
+            {formatCurrency(data[0].equity)}
+          </p>
+        </div>
+        <div className="bg-gray-750 rounded-lg p-4 border border-gray-700">
+          <p className="text-xs text-gray-400 mb-1">Final Equity</p>
+          <p className={`font-bold text-lg ${isProfit ? 'text-green-400' : 'text-red-400'}`}>
+            {formatCurrency(data[data.length - 1].equity)}
+          </p>
+        </div>
+        <div className="bg-gray-750 rounded-lg p-4 border border-gray-700">
+          <p className="text-xs text-gray-400 mb-1">Total Return</p>
+          <p className={`font-bold text-lg ${isProfit ? 'text-green-400' : 'text-red-400'}`}>
+            {(
+              ((data[data.length - 1].equity - data[0].equity) / data[0].equity) *
+              100
+            ).toFixed(2)}
+            %
+          </p>
         </div>
       </div>
     </div>
