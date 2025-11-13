@@ -26,6 +26,7 @@ export default function BacktestPage() {
   // Streaming progress state
   const [progress, setProgress] = useState({ completed: 0, total: 0, currentTicker: '' });
   const [stockResults, setStockResults] = useState([]);
+  const [loadingStatus, setLoadingStatus] = useState('');
 
   const handleBacktestSubmit = async (config) => {
     setLoading(true);
@@ -33,6 +34,7 @@ export default function BacktestPage() {
     setBacktestResult(null);
     setStockResults([]);
     setProgress({ completed: 0, total: 0, currentTicker: '' });
+    setLoadingStatus('Connecting to server...');
 
     try {
       // Use streaming endpoint for real-time progress
@@ -66,6 +68,9 @@ export default function BacktestPage() {
 
             if (data.type === 'init') {
               setProgress({ completed: 0, total: data.total_tickers, currentTicker: '' });
+              setLoadingStatus(`Testing ${data.total_tickers} stocks...`);
+            } else if (data.type === 'loading') {
+              setLoadingStatus(data.message);
             } else if (data.type === 'progress') {
               setProgress({
                 completed: data.completed,
@@ -119,11 +124,24 @@ export default function BacktestPage() {
             {/* Loading State with Progress */}
             {loading && (
               <>
-                <ProgressBar
-                  completed={progress.completed}
-                  total={progress.total}
-                  currentTicker={progress.currentTicker}
-                />
+                {/* Loading Status Message */}
+                {loadingStatus && (
+                  <div className="bg-gray-800 rounded-xl border border-gray-700 p-6">
+                    <div className="flex items-center">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-400 mr-3"></div>
+                      <p className="text-gray-300 font-medium">{loadingStatus}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Progress Bar (only show after data is loaded) */}
+                {progress.total > 0 && (
+                  <ProgressBar
+                    completed={progress.completed}
+                    total={progress.total}
+                    currentTicker={progress.currentTicker}
+                  />
+                )}
 
                 {/* Show stock results as they come in */}
                 {stockResults.length > 0 && (

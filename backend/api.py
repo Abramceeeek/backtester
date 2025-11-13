@@ -207,6 +207,10 @@ async def run_backtest_stream(config: BacktestConfig):
             loader = get_loader()
             if config.universe == 'sp500':
                 tickers = loader.get_sp500_tickers()
+                # Limit tickers if specified (useful for quick testing)
+                if hasattr(config, 'limit_tickers') and config.limit_tickers and config.limit_tickers > 0:
+                    tickers = tickers[:config.limit_tickers]
+                    logger.info(f"Limited to first {len(tickers)} tickers for testing")
             elif config.custom_tickers:
                 tickers = config.custom_tickers
             else:
@@ -225,6 +229,15 @@ async def run_backtest_stream(config: BacktestConfig):
             })
             yield f"data: {init_msg}\n\n"
 
+            # Send loading status
+            loading_msg = json.dumps({
+                "type": "loading",
+                "message": f"Loading historical data for {len(tickers)} stocks... This may take 30-60 seconds.",
+                "stage": "data_loading"
+            })
+            yield f"data: {loading_msg}\n\n"
+            await asyncio.sleep(0.01)
+
             # Load data
             logger.info(f"Loading data for {len(tickers)} tickers...")
             data_dict = loader.get_bulk_data(
@@ -233,6 +246,15 @@ async def run_backtest_stream(config: BacktestConfig):
                 config.end_date,
                 config.interval
             )
+
+            # Send data loaded status
+            data_loaded_msg = json.dumps({
+                "type": "loading",
+                "message": f"Data loaded for {len(data_dict)} stocks. Starting backtest...",
+                "stage": "backtest_starting"
+            })
+            yield f"data: {data_loaded_msg}\n\n"
+            await asyncio.sleep(0.01)
 
             if not data_dict:
                 error_msg = json.dumps({

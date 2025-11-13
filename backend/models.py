@@ -13,6 +13,7 @@ class BacktestConfig(BaseModel):
     strategy_code: str = Field(..., description="Python code defining the strategy function")
     universe: str = Field(default="sp500", description="Stock universe (sp500 or custom)")
     custom_tickers: Optional[List[str]] = Field(default=None, description="Custom ticker list if universe='custom'")
+    limit_tickers: Optional[int] = Field(default=None, description="Limit number of tickers for quick testing (e.g., 20)")
     start_date: str = Field(..., description="Start date in YYYY-MM-DD format")
     end_date: str = Field(..., description="End date in YYYY-MM-DD format")
     initial_capital: float = Field(default=100000.0, description="Starting capital in USD")

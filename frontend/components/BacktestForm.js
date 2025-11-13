@@ -56,9 +56,11 @@ export default function BacktestForm({ onSubmit, loading }) {
     commission: 0.001,
     slippage: 0.0005,
     interval: '1d',
+    limit_tickers: null, // For quick testing
   });
 
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [quickTest, setQuickTest] = useState(false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -66,6 +68,7 @@ export default function BacktestForm({ onSubmit, loading }) {
     const backtestConfig = {
       strategy_code: strategyCode,
       ...config,
+      limit_tickers: quickTest ? 20 : null, // Quick test uses 20 stocks
     };
 
     onSubmit(backtestConfig);
@@ -246,8 +249,26 @@ export default function BacktestForm({ onSubmit, loading }) {
           </div>
         )}
 
+        {/* Quick Test Toggle */}
+        <div className="mb-6 p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+          <label className="flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={quickTest}
+              onChange={(e) => setQuickTest(e.target.checked)}
+              className="w-5 h-5 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
+            />
+            <div className="ml-3">
+              <span className="text-sm font-semibold text-blue-300">Quick Test Mode (20 stocks)</span>
+              <p className="text-xs text-gray-400 mt-1">
+                Test with only 20 stocks (~30 seconds) instead of all 503 stocks (~2-3 minutes)
+              </p>
+            </div>
+          </label>
+        </div>
+
         {/* Submit Button */}
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-3">
           <button
             type="submit"
             disabled={loading}
@@ -257,7 +278,7 @@ export default function BacktestForm({ onSubmit, loading }) {
                 : 'bg-green-600 hover:bg-green-500 shadow-lg shadow-green-500/30'
             }`}
           >
-            {loading ? 'Running Backtest...' : 'Run Backtest'}
+            {loading ? 'Running...' : quickTest ? 'Run Quick Test' : 'Run Full Backtest'}
           </button>
         </div>
       </form>
