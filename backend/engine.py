@@ -171,11 +171,17 @@ class BacktestEngine:
             current_position = None
             trades = []
 
+            # Pre-extract numpy views for hot columns to minimize pandas overhead
+            close_prices = data['close'].to_numpy(copy=False)
+            high_prices = data['high'].to_numpy(copy=False)
+            low_prices = data['low'].to_numpy(copy=False)
+            index_values = data.index
+            total_bars = len(data)
+
             # Bar-by-bar simulation
-            for i in range(len(data)):
-                current_bar = data.iloc[:i+1]
-                current_date = data.index[i].strftime('%Y-%m-%d')
-                current_close = data.iloc[i]['close']
+            for i in range(total_bars):
+                current_date = index_values[i].strftime('%Y-%m-%d')
+                current_close = close_prices[i]
 
                 # Check for stop loss / take profit on existing position
                 if current_position:
@@ -184,13 +190,13 @@ class BacktestEngine:
 
                     # Check stop loss
                     if current_position.stop_loss:
-                        if data.iloc[i]['low'] <= current_position.stop_loss:
+                        if low_prices[i] <= current_position.stop_loss:
                             exit_reason = 'stop_loss'
                             exit_price = current_position.stop_loss
 
                     # Check take profit
                     if current_position.take_profit and not exit_reason:
-                        if data.iloc[i]['high'] >= current_position.take_profit:
+                        if high_prices[i] >= current_position.take_profit:
                             exit_reason = 'take_profit'
                             exit_price = current_position.take_profit
 
@@ -211,6 +217,11 @@ class BacktestEngine:
 
                 # Run strategy logic if no position or strategy can override
                 try:
+                    # Avoid slicing for the final bar where full data is already available
+                    if i == total_bars - 1:
+                        current_bar = data
+                    else:
+                        current_bar = data.iloc[:i+1]
                     signal = self.sandbox.execute(
                         self.config.strategy_code,
                         current_bar,
@@ -278,14 +289,14 @@ class BacktestEngine:
 
             # Close any remaining position at end of backtest
             if current_position:
-                final_date = data.index[-1].strftime('%Y-%m-%d')
-                final_price = data.iloc[-1]['close'] * (1 - self.config.slippage)
+                final_date = index_values[-1].strftime('%Y-%m-%d')
+                final_price = close_prices[-1] * (1 - self.config.slippage)
                 trade = self._close_position(
                     current_position,
                     final_date,
                     final_price,
                     'end_of_backtest',
-                    len(data) - 1
+                    total_bars - 1
                 )
                 trades.append(trade)
 
