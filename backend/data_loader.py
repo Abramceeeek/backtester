@@ -14,6 +14,8 @@ from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,6 +35,20 @@ class DataLoader:
     def __init__(self):
         self.sp500_tickers = None
         self.cache_dir = CACHE_DIR
+        self._throttle_lock = Lock()
+        self._last_request_time = 0.0
+
+    def _throttle(self, delay: float) -> None:
+        """Apply a delay between outbound network requests when required."""
+        if delay <= 0:
+            return
+
+        with self._throttle_lock:
+            now = time.perf_counter()
+            wait = delay - (now - self._last_request_time)
+            if wait > 0:
+                time.sleep(wait)
+            self._last_request_time = time.perf_counter()
 
     def get_sp500_tickers(self, force_refresh: bool = False) -> List[str]:
         """
@@ -116,7 +132,8 @@ class DataLoader:
         end_date: str,
         interval: str = '1d',
         force_refresh: bool = False,
-        retry_count: int = 3
+        retry_count: int = 3,
+        delay: float = 0.0
     ) -> Optional[pd.DataFrame]:
         """
         Fetch historical OHLCV data for a ticker with retry logic.
@@ -128,6 +145,7 @@ class DataLoader:
             interval: Data interval (1d, 1h, etc.)
             force_refresh: Force refresh even if cache exists
             retry_count: Number of retries on failure
+            delay: Minimum spacing between outbound requests in seconds
 
         Returns:
             DataFrame with OHLCV data or None if failed
@@ -157,6 +175,9 @@ class DataLoader:
                     time.sleep(2 * attempt)  # Progressive backoff
 
                 logger.info(f"Fetching {ticker} data from {start_date} to {end_date}")
+
+                # Respect configured throttle before hitting the network
+                self._throttle(delay)
 
                 # Use download method for better reliability
                 df = yf.download(
@@ -232,7 +253,8 @@ class DataLoader:
         end_date: str,
         interval: str = '1d',
         force_refresh: bool = False,
-        delay: float = 0.5
+        delay: float = 0.5,
+        max_workers: Optional[int] = None
     ) -> Dict[str, pd.DataFrame]:
         """
         Fetch historical data for multiple tickers with rate limiting.
@@ -244,33 +266,56 @@ class DataLoader:
             interval: Data interval
             force_refresh: Force refresh cache
             delay: Delay between requests in seconds
+            max_workers: Maximum number of worker threads for parallel downloads
 
         Returns:
             Dictionary mapping tickers to DataFrames
         """
+        total = len(tickers)
         data = {}
         failed = []
 
-        logger.info(f"Fetching data for {len(tickers)} tickers...")
+        if total == 0:
+            return data
 
-        for i, ticker in enumerate(tickers):
-            # Add delay between requests to avoid rate limiting
-            if i > 0:
-                time.sleep(delay)
+        logger.info(f"Fetching data for {total} tickers...")
 
+        if max_workers is None:
+            cpu_workers = os.cpu_count() or 1
+            max_workers = max(1, min(8, cpu_workers, total))
+
+        def fetch_single(ticker: str):
             df = self.get_historical_data(
-                ticker, start_date, end_date, interval, force_refresh
+                ticker,
+                start_date,
+                end_date,
+                interval,
+                force_refresh,
+                delay=delay
             )
-            if df is not None:
-                data[ticker] = df
-            else:
-                failed.append(ticker)
+            return ticker, df
 
-            # Progress update every 10 tickers
-            if (i + 1) % 10 == 0:
-                logger.info(f"Progress: {i + 1}/{len(tickers)} tickers processed")
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(fetch_single, ticker): ticker for ticker in tickers
+            }
 
-        logger.info(f"Successfully loaded {len(data)}/{len(tickers)} tickers")
+            for completed, future in enumerate(as_completed(futures), start=1):
+                ticker = futures[future]
+                try:
+                    ticker_key, df = future.result()
+                    if df is not None:
+                        data[ticker_key] = df
+                    else:
+                        failed.append(ticker_key)
+                except Exception as exc:
+                    logger.error(f"Failed to fetch data for {ticker}: {exc}")
+                    failed.append(ticker)
+
+                if completed % 10 == 0 or completed == total:
+                    logger.info(f"Progress: {completed}/{total} tickers processed")
+
+        logger.info(f"Successfully loaded {len(data)}/{total} tickers")
         if failed:
             logger.warning(f"Failed tickers: {', '.join(failed[:10])}" +
                           (f" and {len(failed)-10} more" if len(failed) > 10 else ""))
