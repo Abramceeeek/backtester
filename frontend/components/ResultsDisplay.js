@@ -5,6 +5,49 @@
 export default function ResultsDisplay({ result }) {
   const { metrics } = result;
 
+  const exportToJSON = () => {
+    const dataStr = JSON.stringify(result, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `backtest-results-${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportToCSV = () => {
+    if (!result.sample_trades || result.sample_trades.length === 0) {
+      alert('No trade data available to export');
+      return;
+    }
+
+    const headers = ['Ticker', 'Entry Date', 'Entry Price', 'Exit Date', 'Exit Price', 'P&L', 'P&L %', 'Exit Reason'];
+    const rows = result.sample_trades.map(trade => [
+      trade.ticker,
+      trade.entry_date,
+      trade.entry_price,
+      trade.exit_date || 'N/A',
+      trade.exit_price || 'N/A',
+      trade.pnl || 'N/A',
+      trade.pnl_percent || 'N/A',
+      trade.exit_reason || 'N/A'
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `backtest-trades-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const formatNumber = (num, decimals = 2) => {
     if (num === null || num === undefined) return 'N/A';
     return num.toLocaleString(undefined, {
@@ -59,6 +102,28 @@ export default function ResultsDisplay({ result }) {
 
   return (
     <div className="space-y-6">
+      {/* Export Buttons */}
+      <div className="flex justify-end gap-2">
+        <button
+          onClick={exportToCSV}
+          className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Export CSV
+        </button>
+        <button
+          onClick={exportToJSON}
+          className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+          </svg>
+          Export JSON
+        </button>
+      </div>
+
       {/* Key Performance Indicators Section */}
       <div>
         <h2 className="text-xl font-bold text-gray-200 mb-4">

@@ -3,6 +3,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import StrategyLibrary from './StrategyLibrary';
 
 const DEFAULT_STRATEGY = `def strategy(data, state):
     """
@@ -61,6 +62,7 @@ export default function BacktestForm({ onSubmit, loading }) {
 
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [quickTest, setQuickTest] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -91,6 +93,11 @@ export default function BacktestForm({ onSubmit, loading }) {
     }
   };
 
+  const handleSelectStrategy = (strategy) => {
+    setStrategyCode(strategy.code);
+    setShowLibrary(false);
+  };
+
   return (
     <div className="bg-gray-800 rounded-xl border border-gray-700 p-6">
       <form onSubmit={handleSubmit}>
@@ -100,14 +107,33 @@ export default function BacktestForm({ onSubmit, loading }) {
             <label className="block text-sm font-semibold text-gray-200">
               Your Strategy Code
             </label>
-            <button
-              type="button"
-              onClick={loadTemplate}
-              className="text-sm text-green-400 hover:text-green-300 font-medium transition-colors"
-            >
-              Load Template
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowLibrary(!showLibrary)}
+                className="text-sm text-green-400 hover:text-green-300 font-medium transition-colors flex items-center gap-1"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                Browse Library
+              </button>
+              <button
+                type="button"
+                onClick={loadTemplate}
+                className="text-sm text-green-400 hover:text-green-300 font-medium transition-colors"
+              >
+                Load Template
+              </button>
+            </div>
           </div>
+
+          {/* Strategy Library Modal */}
+          {showLibrary && (
+            <div className="mb-4">
+              <StrategyLibrary onSelectStrategy={handleSelectStrategy} />
+            </div>
+          )}
           <div className="relative">
             <textarea
               value={strategyCode}
