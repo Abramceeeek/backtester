@@ -1,7 +1,4 @@
-"""
-FastAPI application for the trading strategy backtester.
-Exposes endpoints for running backtests and retrieving universe data.
-"""
+"""FastAPI application for trading strategy backtester."""
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,54 +28,35 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware for frontend integration
+import os
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:8000"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your frontend domain
+    allow_origins=ALLOWED_ORIGINS + ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Store running/completed backtests
 backtest_jobs: Dict[str, BacktestResult] = {}
 
 
 @app.get("/")
 async def root():
-    """Root endpoint with API information."""
-    return {
-        "name": "Trading Strategy Backtester API",
-        "version": "1.0.0",
-        "endpoints": {
-            "POST /api/backtest": "Run a backtest",
-            "POST /api/backtest/stream": "Run a backtest with streaming progress",
-            "GET /api/universe/sp500": "Get S&P 500 ticker list",
-            "GET /api/strategy/template": "Get strategy code template",
-            "GET /api/strategy/library": "Get pre-built strategy examples",
-            "GET /api/backtest/{job_id}": "Get backtest result by ID",
-            "GET /health": "Health check"
-        }
-    }
+    return {"status": "ok", "version": "1.0.0"}
 
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 
 @app.get("/api/universe/sp500", response_model=UniverseResponse)
 async def get_sp500_universe(force_refresh: bool = False):
-    """
-    Get the list of S&P 500 tickers.
-
-    Args:
-        force_refresh: Force refresh the ticker list from source
-
-    Returns:
-        UniverseResponse with ticker list
-    """
     try:
         loader = get_loader()
         tickers = loader.get_sp500_tickers(force_refresh=force_refresh)
@@ -100,12 +78,6 @@ async def get_sp500_universe(force_refresh: bool = False):
 
 @app.get("/api/strategy/template")
 async def get_strategy_template():
-    """
-    Get a template for writing trading strategies.
-
-    Returns:
-        Dict with template code and documentation
-    """
     sandbox = get_sandbox()
     template = sandbox.get_strategy_template()
 
@@ -134,12 +106,6 @@ async def get_strategy_template():
 
 @app.get("/api/strategy/library")
 async def get_strategy_library():
-    """
-    Get the library of pre-built strategy examples.
-
-    Returns:
-        Dict with list of strategies including code, descriptions, and metadata
-    """
     import os
 
     # Path to examples directory
@@ -432,20 +398,10 @@ async def get_strategy_library():
 
 @app.post("/api/backtest", response_model=BacktestResult)
 async def run_backtest(config: BacktestConfig):
-    """
-    Run a trading strategy backtest.
-
-    Args:
-        config: BacktestConfig with strategy code and parameters
-
-    Returns:
-        BacktestResult with metrics, equity curve, and trades
-    """
     job_id = str(uuid.uuid4())
     logger.info(f"Starting backtest job {job_id}")
 
     try:
-        # Validate strategy code first
         sandbox = get_sandbox()
         try:
             sandbox.validate(config.strategy_code)
@@ -456,11 +412,8 @@ async def run_backtest(config: BacktestConfig):
                 message=f"Strategy validation failed: {str(e)}"
             )
 
-        # Create and run backtest engine
         engine = BacktestEngine(config)
         result = engine.run_backtest()
-
-        # Store result
         backtest_jobs[job_id] = result
 
         logger.info(f"Backtest job {job_id} completed: {result.success}")
@@ -477,21 +430,11 @@ async def run_backtest(config: BacktestConfig):
 
 @app.post("/api/backtest/stream")
 async def run_backtest_stream(config: BacktestConfig):
-    """
-    Run a trading strategy backtest with streaming per-stock results.
-
-    Args:
-        config: BacktestConfig with strategy code and parameters
-
-    Returns:
-        Server-Sent Events stream with progress updates
-    """
     async def generate_backtest_stream() -> AsyncGenerator[str, None]:
         job_id = str(uuid.uuid4())
         logger.info(f"Starting streaming backtest job {job_id}")
 
         try:
-            # Validate strategy code first
             sandbox = get_sandbox()
             try:
                 sandbox.validate(config.strategy_code)
@@ -503,11 +446,9 @@ async def run_backtest_stream(config: BacktestConfig):
                 yield f"data: {error_msg}\n\n"
                 return
 
-            # Get tickers
             loader = get_loader()
             if config.universe == 'sp500':
                 tickers = loader.get_sp500_tickers()
-                # Limit tickers if specified (useful for quick testing)
                 if hasattr(config, 'limit_tickers') and config.limit_tickers and config.limit_tickers > 0:
                     tickers = tickers[:config.limit_tickers]
                     logger.info(f"Limited to first {len(tickers)} tickers for testing")
@@ -521,7 +462,6 @@ async def run_backtest_stream(config: BacktestConfig):
                 yield f"data: {error_msg}\n\n"
                 return
 
-            # Send initial progress
             init_msg = json.dumps({
                 "type": "init",
                 "total_tickers": len(tickers),
@@ -529,7 +469,6 @@ async def run_backtest_stream(config: BacktestConfig):
             })
             yield f"data: {init_msg}\n\n"
 
-            # Send loading status
             loading_msg = json.dumps({
                 "type": "loading",
                 "message": f"Loading historical data for {len(tickers)} stocks... This may take 30-60 seconds.",
@@ -538,7 +477,6 @@ async def run_backtest_stream(config: BacktestConfig):
             yield f"data: {loading_msg}\n\n"
             await asyncio.sleep(0.01)
 
-            # Load data in executor to avoid blocking
             logger.info(f"Loading data for {len(tickers)} tickers...")
             import concurrent.futures
             loop = asyncio.get_event_loop()
@@ -551,7 +489,6 @@ async def run_backtest_stream(config: BacktestConfig):
                 config.interval
             )
 
-            # Send data loaded status
             data_loaded_msg = json.dumps({
                 "type": "loading",
                 "message": f"Data loaded for {len(data_dict)} stocks. Starting backtest...",
@@ -568,11 +505,9 @@ async def run_backtest_stream(config: BacktestConfig):
                 yield f"data: {error_msg}\n\n"
                 return
 
-            # Create engine
             from engine_streaming import StreamingBacktestEngine
             engine = StreamingBacktestEngine(config)
 
-            # Run backtest with streaming
             completed_count = 0
             all_ticker_results = []
 
@@ -580,7 +515,6 @@ async def run_backtest_stream(config: BacktestConfig):
                 completed_count += 1
                 all_ticker_results.append(ticker_result)
 
-                # Send progress update
                 progress_msg = json.dumps({
                     "type": "progress",
                     "ticker": ticker_result.get("ticker"),
@@ -590,15 +524,11 @@ async def run_backtest_stream(config: BacktestConfig):
                     "ticker_result": ticker_result
                 })
                 yield f"data: {progress_msg}\n\n"
-
-                # Small delay to ensure message is sent
                 await asyncio.sleep(0.01)
 
-            # Send final aggregated results
             from engine import BacktestEngine
             regular_engine = BacktestEngine(config)
 
-            # Convert ticker results to TickerPerformance objects
             from models import TickerPerformance
             ticker_perfs = []
             for tr in all_ticker_results:
@@ -635,15 +565,6 @@ async def run_backtest_stream(config: BacktestConfig):
 
 @app.get("/api/backtest/{job_id}", response_model=BacktestResult)
 async def get_backtest_result(job_id: str):
-    """
-    Get backtest result by job ID.
-
-    Args:
-        job_id: Backtest job ID
-
-    Returns:
-        BacktestResult
-    """
     if job_id not in backtest_jobs:
         raise HTTPException(status_code=404, detail="Backtest job not found")
 
@@ -652,15 +573,6 @@ async def get_backtest_result(job_id: str):
 
 @app.post("/api/backtest/validate")
 async def validate_strategy(strategy_code: str):
-    """
-    Validate strategy code without running backtest.
-
-    Args:
-        strategy_code: Python code to validate
-
-    Returns:
-        Validation result
-    """
     try:
         sandbox = get_sandbox()
         sandbox.validate(strategy_code)
@@ -679,12 +591,6 @@ async def validate_strategy(strategy_code: str):
 
 @app.delete("/api/cache/clear")
 async def clear_cache():
-    """
-    Clear all cached data (data cache and backtest jobs).
-
-    Returns:
-        Success message
-    """
     try:
         loader = get_loader()
         loader.clear_cache()
@@ -706,7 +612,6 @@ async def clear_cache():
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
-    """Global exception handler."""
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
@@ -720,12 +625,4 @@ async def global_exception_handler(request, exc):
 
 if __name__ == "__main__":
     import uvicorn
-
-    # Run the API server
-    uvicorn.run(
-        "api:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
-    )
+    uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True, log_level="info")

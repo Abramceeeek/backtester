@@ -1,15 +1,10 @@
-/**
- * BacktestForm component - Form for configuring and submitting backtests
- */
-
 import { useState, useEffect } from 'react';
 import StrategyLibrary from './StrategyLibrary';
 
 const DEFAULT_STRATEGY = `def strategy(data, state):
     """
-    Simple RSI mean reversion strategy - more aggressive for testing.
-    Buy when RSI < 40 (oversold), sell when RSI > 60 (overbought).
-    Note: pd (pandas) and np (numpy) are pre-loaded, no import needed.
+    RSI mean reversion strategy.
+    Buy when RSI < 40, sell when RSI > 60.
     """
     close = data['close'].values
 
@@ -85,7 +80,8 @@ export default function BacktestForm({ onSubmit, loading }) {
 
   const loadTemplate = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/strategy/template');
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_URL}/api/strategy/template`);
       const data = await response.json();
       setStrategyCode(data.template);
     } catch (err) {

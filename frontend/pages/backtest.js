@@ -1,13 +1,3 @@
-/**
- * Backtest page component - Main interface for strategy backtesting
- *
- * Enhanced with:
- * - Dark theme UI matching design mockup
- * - Tabbed results view (Summary Statistics, Equity Curve, Trade List)
- * - Code editor with syntax highlighting
- * - Educational tooltips and help section
- */
-
 import { useState } from 'react';
 import BacktestForm from '../components/BacktestForm';
 import ResultsDisplay from '../components/ResultsDisplay';
@@ -38,7 +28,8 @@ export default function BacktestPage() {
 
     try {
       // Use streaming endpoint for real-time progress
-      const response = await fetch('http://localhost:8000/api/backtest/stream', {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_URL}/api/backtest/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -1,7 +1,3 @@
-/**
- * StrategyLibrary component - Browse and select from pre-built strategies
- */
-
 import { useState, useEffect } from 'react';
 
 export default function StrategyLibrary({ onSelectStrategy }) {
@@ -17,7 +13,8 @@ export default function StrategyLibrary({ onSelectStrategy }) {
 
   const loadStrategies = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/strategy/library');
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_URL}/api/strategy/library`);
       const data = await response.json();
       setStrategies(data.strategies);
       setCategories(['all', ...data.categories]);
