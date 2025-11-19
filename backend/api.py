@@ -510,8 +510,14 @@ async def run_backtest_stream(config: BacktestConfig):
 
             completed_count = 0
             all_ticker_results = []
+            all_trades_dict = {}  # Collect all trades
 
             async for ticker_result in engine.run_backtest_streaming(data_dict):
+                # Check if this is the final message with all trades
+                if ticker_result.get("_final"):
+                    all_trades_dict = ticker_result.get("_all_trades", {})
+                    continue
+                
                 completed_count += 1
                 all_ticker_results.append(ticker_result)
 
@@ -529,13 +535,26 @@ async def run_backtest_stream(config: BacktestConfig):
             from engine import BacktestEngine
             regular_engine = BacktestEngine(config)
 
-            from models import TickerPerformance
+            from models import TickerPerformance, Trade
             ticker_perfs = []
             for tr in all_ticker_results:
                 if tr.get("success"):
                     ticker_perfs.append(TickerPerformance(**tr))
 
-            final_result = regular_engine._aggregate_results(ticker_perfs)
+            # Convert all_trades_dict to List[Trade] format if needed
+            all_trades_list_dict = {}
+            for ticker, trades in all_trades_dict.items():
+                if trades and len(trades) > 0:
+                    if isinstance(trades[0], dict):
+                        # Dict format - convert to Trade objects
+                        all_trades_list_dict[ticker] = [Trade(**t) for t in trades]
+                    else:
+                        # Already Trade objects
+                        all_trades_list_dict[ticker] = trades
+                else:
+                    all_trades_list_dict[ticker] = []
+
+            final_result = regular_engine._aggregate_results(ticker_perfs, all_trades_list_dict)
             final_result.config = config
 
             final_msg = json.dumps({

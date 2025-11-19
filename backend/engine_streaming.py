@@ -42,24 +42,27 @@ class StreamingBacktestEngine(BacktestEngine):
         }
 
         # Yield results as they complete
+        all_trades_dict = {}  # Collect all trades for aggregation
         for future in as_completed(futures):
             ticker = futures[future]
             try:
                 result = future.result()
                 if result:
+                    performance, trades = result
+                    all_trades_dict[ticker] = trades  # Store all trades
                     # Convert TickerPerformance to dict for JSON serialization
                     yield {
                         "success": True,
-                        "ticker": result.ticker,
-                        "total_trades": result.total_trades,
-                        "winning_trades": result.winning_trades,
-                        "losing_trades": result.losing_trades,
-                        "total_pnl": result.total_pnl,
-                        "total_pnl_percent": result.total_pnl_percent,
-                        "win_rate": result.win_rate,
-                        "avg_trade_pnl": result.avg_trade_pnl,
-                        "best_trade": result.best_trade,
-                        "worst_trade": result.worst_trade,
+                        "ticker": performance.ticker,
+                        "total_trades": performance.total_trades,
+                        "winning_trades": performance.winning_trades,
+                        "losing_trades": performance.losing_trades,
+                        "total_pnl": performance.total_pnl,
+                        "total_pnl_percent": performance.total_pnl_percent,
+                        "win_rate": performance.win_rate,
+                        "avg_trade_pnl": performance.avg_trade_pnl,
+                        "best_trade": performance.best_trade,
+                        "worst_trade": performance.worst_trade,
                         "trades": [
                             {
                                 "ticker": t.ticker,
@@ -73,9 +76,13 @@ class StreamingBacktestEngine(BacktestEngine):
                                 "exit_reason": t.exit_reason,
                                 "bars_held": t.bars_held
                             }
-                            for t in (result.trades or [])
+                            for t in (performance.trades or [])
                         ]
                     }
+                    # Store all trades for final aggregation (not in yield)
+                    if not hasattr(self, '_streaming_all_trades'):
+                        self._streaming_all_trades = {}
+                    self._streaming_all_trades.update(all_trades_dict)
                 else:
                     yield {
                         "success": False,
@@ -94,3 +101,10 @@ class StreamingBacktestEngine(BacktestEngine):
             await asyncio.sleep(0)
 
         executor.shutdown(wait=False)
+        
+        # Yield final message with all trades for aggregation
+        if hasattr(self, '_streaming_all_trades'):
+            yield {
+                "_final": True,
+                "_all_trades": self._streaming_all_trades
+            }

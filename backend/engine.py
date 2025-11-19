@@ -95,10 +95,10 @@ class BacktestEngine:
             logger.info(f"Loaded data for {len(data_dict)} tickers")
 
             # Run backtest for each ticker
-            ticker_results = self._run_multi_ticker_backtest(data_dict)
+            ticker_results, all_trades_dict = self._run_multi_ticker_backtest(data_dict)
 
-            # Aggregate results
-            result = self._aggregate_results(ticker_results)
+            # Aggregate results using all trades
+            result = self._aggregate_results(ticker_results, all_trades_dict)
             result.config = self.config
             result.execution_time = (datetime.now() - start_time).total_seconds()
 
@@ -114,7 +114,7 @@ class BacktestEngine:
     def _run_multi_ticker_backtest(
         self,
         data_dict: Dict[str, pd.DataFrame]
-    ) -> List[TickerPerformance]:
+    ) -> tuple[List[TickerPerformance], Dict[str, List[Trade]]]:
         """
         Run backtest across multiple tickers in parallel.
 
@@ -125,6 +125,7 @@ class BacktestEngine:
             List of TickerPerformance results
         """
         results = []
+        all_trades_dict = {}  # Store all trades by ticker
 
         # Use ThreadPoolExecutor for parallel execution
         max_workers = min(10, len(data_dict))
@@ -140,17 +141,19 @@ class BacktestEngine:
                 try:
                     result = future.result()
                     if result:
-                        results.append(result)
+                        performance, trades = result
+                        results.append(performance)
+                        all_trades_dict[ticker] = trades
                 except Exception as e:
                     logger.error(f"Failed to backtest {ticker}: {e}")
 
-        return results
+        return results, all_trades_dict
 
     def _run_single_ticker_backtest(
         self,
         ticker: str,
         data: pd.DataFrame
-    ) -> Optional[TickerPerformance]:
+    ) -> Optional[tuple[TickerPerformance, List[Trade]]]:
         """
         Run backtest for a single ticker.
 
@@ -319,7 +322,7 @@ class BacktestEngine:
 
             logger.info(f"{ticker}: Generated {len(trades)} trades")
             performance = self._calculate_ticker_performance(ticker, trades)
-            return performance
+            return (performance, trades)  # Return both performance and all trades
 
         except Exception as e:
             logger.error(f"Error backtesting {ticker}: {e}")
@@ -444,7 +447,8 @@ class BacktestEngine:
 
     def _aggregate_results(
         self,
-        ticker_results: List[TickerPerformance]
+        ticker_results: List[TickerPerformance],
+        all_trades_dict: Dict[str, List[Trade]]
     ) -> BacktestResult:
         """
         Aggregate ticker results into portfolio-level metrics.
@@ -461,10 +465,10 @@ class BacktestEngine:
                 message="No ticker results to aggregate"
             )
 
-        # Aggregate trades
+        # Aggregate ALL trades (not just samples)
         all_trades = []
-        for tr in ticker_results:
-            all_trades.extend(tr.trades)
+        for ticker, trades in all_trades_dict.items():
+            all_trades.extend(trades)
 
         # Sort by entry date
         all_trades.sort(key=lambda t: t.entry_date)
