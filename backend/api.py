@@ -508,6 +508,14 @@ async def run_backtest_stream(config: BacktestConfig):
             from engine_streaming import StreamingBacktestEngine
             engine = StreamingBacktestEngine(config)
 
+            backtest_start_msg = json.dumps({
+                "type": "loading",
+                "message": f"Starting backtest on {len(data_dict)} stocks. This may take 2-5 minutes...",
+                "stage": "backtest_running"
+            })
+            yield f"data: {backtest_start_msg}\n\n"
+            await asyncio.sleep(0.01)
+
             completed_count = 0
             all_ticker_results = []
             all_trades_dict = {}  # Collect all trades
@@ -532,36 +540,72 @@ async def run_backtest_stream(config: BacktestConfig):
                 yield f"data: {progress_msg}\n\n"
                 await asyncio.sleep(0.01)
 
-            from engine import BacktestEngine
-            regular_engine = BacktestEngine(config)
-
-            from models import TickerPerformance, Trade
-            ticker_perfs = []
-            for tr in all_ticker_results:
-                if tr.get("success"):
-                    ticker_perfs.append(TickerPerformance(**tr))
-
-            # Convert all_trades_dict to List[Trade] format if needed
-            all_trades_list_dict = {}
-            for ticker, trades in all_trades_dict.items():
-                if trades and len(trades) > 0:
-                    if isinstance(trades[0], dict):
-                        # Dict format - convert to Trade objects
-                        all_trades_list_dict[ticker] = [Trade(**t) for t in trades]
-                    else:
-                        # Already Trade objects
-                        all_trades_list_dict[ticker] = trades
-                else:
-                    all_trades_list_dict[ticker] = []
-
-            final_result = regular_engine._aggregate_results(ticker_perfs, all_trades_list_dict)
-            final_result.config = config
-
-            final_msg = json.dumps({
-                "type": "complete",
-                "result": final_result.dict()
+            # Send aggregation start message
+            aggregating_msg = json.dumps({
+                "type": "loading",
+                "message": f"Aggregating results from {len(all_ticker_results)} stocks...",
+                "stage": "aggregating"
             })
-            yield f"data: {final_msg}\n\n"
+            yield f"data: {aggregating_msg}\n\n"
+            await asyncio.sleep(0.01)
+            
+            try:
+                from engine import BacktestEngine
+                regular_engine = BacktestEngine(config)
+
+                from models import TickerPerformance, Trade
+                ticker_perfs = []
+                for tr in all_ticker_results:
+                    if tr.get("success"):
+                        try:
+                            ticker_perfs.append(TickerPerformance(**tr))
+                        except Exception as e:
+                            logger.warning(f"Failed to create TickerPerformance for {tr.get('ticker')}: {e}")
+                            continue
+
+                if not ticker_perfs:
+                    error_msg = json.dumps({
+                        "type": "error",
+                        "message": "No successful ticker results to aggregate"
+                    })
+                    yield f"data: {error_msg}\n\n"
+                    return
+
+                # Convert all_trades_dict to List[Trade] format if needed
+                all_trades_list_dict = {}
+                for ticker, trades in all_trades_dict.items():
+                    if trades and len(trades) > 0:
+                        try:
+                            if isinstance(trades[0], dict):
+                                # Dict format - convert to Trade objects
+                                all_trades_list_dict[ticker] = [Trade(**t) for t in trades]
+                            else:
+                                # Already Trade objects
+                                all_trades_list_dict[ticker] = trades
+                        except Exception as e:
+                            logger.warning(f"Failed to convert trades for {ticker}: {e}")
+                            all_trades_list_dict[ticker] = []
+                    else:
+                        all_trades_list_dict[ticker] = []
+
+                logger.info(f"Aggregating {len(ticker_perfs)} ticker results with {sum(len(t) for t in all_trades_list_dict.values())} total trades")
+                final_result = regular_engine._aggregate_results(ticker_perfs, all_trades_list_dict)
+                final_result.config = config
+
+                final_msg = json.dumps({
+                    "type": "complete",
+                    "result": final_result.dict()
+                })
+                yield f"data: {final_msg}\n\n"
+                logger.info(f"Streaming backtest job {job_id} completed successfully")
+                
+            except Exception as e:
+                logger.error(f"Failed to aggregate results: {e}", exc_info=True)
+                error_msg = json.dumps({
+                    "type": "error",
+                    "message": f"Failed to aggregate results: {str(e)}"
+                })
+                yield f"data: {error_msg}\n\n"
 
         except Exception as e:
             logger.error(f"Streaming backtest failed: {e}", exc_info=True)
