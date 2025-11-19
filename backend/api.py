@@ -519,6 +519,7 @@ async def run_backtest_stream(config: BacktestConfig):
             completed_count = 0
             all_ticker_results = []
             all_trades_dict = {}  # Collect all trades
+            last_heartbeat = asyncio.get_event_loop().time()
 
             async for ticker_result in engine.run_backtest_streaming(data_dict):
                 # Check if this is the final message with all trades
@@ -538,6 +539,18 @@ async def run_backtest_stream(config: BacktestConfig):
                     "ticker_result": ticker_result
                 })
                 yield f"data: {progress_msg}\n\n"
+                
+                # Send heartbeat every 30 seconds to keep connection alive
+                current_time = asyncio.get_event_loop().time()
+                if current_time - last_heartbeat > 30:
+                    heartbeat_msg = json.dumps({
+                        "type": "heartbeat",
+                        "message": f"Still processing... {completed_count}/{len(data_dict)} stocks completed",
+                        "timestamp": current_time
+                    })
+                    yield f"data: {heartbeat_msg}\n\n"
+                    last_heartbeat = current_time
+                
                 await asyncio.sleep(0.01)
 
             # Send aggregation start message
