@@ -51,6 +51,11 @@ class StreamingBacktestEngine(BacktestEngine):
                     performance, trades = result
                     all_trades_dict[ticker] = trades  # Store all trades
                     # Convert TickerPerformance to dict for JSON serialization
+                    # Calculate best/worst trade from sample trades
+                    sample_trades = performance.trades or []
+                    best_trade = max((t.pnl for t in sample_trades), default=0) if sample_trades else 0
+                    worst_trade = min((t.pnl for t in sample_trades), default=0) if sample_trades else 0
+                    
                     yield {
                         "success": True,
                         "ticker": performance.ticker,
@@ -60,9 +65,13 @@ class StreamingBacktestEngine(BacktestEngine):
                         "total_pnl": performance.total_pnl,
                         "total_pnl_percent": performance.total_pnl_percent,
                         "win_rate": performance.win_rate,
-                        "avg_trade_pnl": performance.avg_trade_pnl,
-                        "best_trade": performance.best_trade,
-                        "worst_trade": performance.worst_trade,
+                        "avg_pnl_per_trade": performance.avg_pnl_per_trade,
+                        "avg_win": performance.avg_win,
+                        "avg_loss": performance.avg_loss,
+                        "profit_factor": performance.profit_factor,
+                        "max_drawdown": performance.max_drawdown,
+                        "best_trade": best_trade,
+                        "worst_trade": worst_trade,
                         "trades": [
                             {
                                 "ticker": t.ticker,
@@ -76,7 +85,7 @@ class StreamingBacktestEngine(BacktestEngine):
                                 "exit_reason": t.exit_reason,
                                 "bars_held": t.bars_held
                             }
-                            for t in (performance.trades or [])
+                            for t in sample_trades
                         ]
                     }
                     # Store all trades for final aggregation (not in yield)
@@ -90,12 +99,13 @@ class StreamingBacktestEngine(BacktestEngine):
                         "error": "No result returned"
                     }
             except Exception as e:
-                logger.error(f"Failed to backtest {ticker}: {e}")
+                logger.error(f"Failed to backtest {ticker}: {e}", exc_info=True)
                 yield {
                     "success": False,
                     "ticker": ticker,
                     "error": str(e)
                 }
+                # Continue processing other tickers even if one fails
 
             # Allow other tasks to run
             await asyncio.sleep(0)
