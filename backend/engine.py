@@ -212,6 +212,10 @@ class BacktestEngine:
                             exit_reason,
                             i
                         )
+                        # Update portfolio cash with proceeds from closing position
+                        proceeds = exit_price * current_position.size
+                        exit_commission = proceeds * self.config.commission
+                        portfolio.cash += (proceeds - exit_commission)
                         trades.append(trade)
                         current_position = None
 
@@ -284,6 +288,10 @@ class BacktestEngine:
                         'signal',
                         i
                     )
+                    # Update portfolio cash with proceeds from closing position
+                    proceeds = exit_price * current_position.size
+                    exit_commission = proceeds * self.config.commission
+                    portfolio.cash += (proceeds - exit_commission)
                     trades.append(trade)
                     current_position = None
 
@@ -298,6 +306,10 @@ class BacktestEngine:
                     'end_of_backtest',
                     total_bars - 1
                 )
+                # Update portfolio cash with proceeds from closing position
+                proceeds = final_price * current_position.size
+                exit_commission = proceeds * self.config.commission
+                portfolio.cash += (proceeds - exit_commission)
                 trades.append(trade)
 
             # Calculate performance metrics
@@ -334,16 +346,16 @@ class BacktestEngine:
         Returns:
             Trade record
         """
-        # Calculate P&L
+        # Calculate P&L (including both entry and exit commissions)
         if position.direction == 'long':
             pnl = (exit_price - position.entry_price) * position.size
         else:
             pnl = (position.entry_price - exit_price) * position.size
 
-        # Subtract exit commission
-        position_value = exit_price * position.size
-        commission = position_value * self.config.commission
-        pnl -= commission
+        # Subtract both entry and exit commissions
+        entry_commission = position.entry_price * position.size * self.config.commission
+        exit_commission = exit_price * position.size * self.config.commission
+        pnl -= (entry_commission + exit_commission)
 
         pnl_percent = (pnl / (position.entry_price * position.size)) * 100
 
