@@ -69,6 +69,10 @@ class BacktestEngine:
             # Get tickers
             if self.config.universe == 'sp500':
                 tickers = self.loader.get_sp500_tickers()
+                # Apply limit BEFORE data loading
+                if self.config.limit_tickers and self.config.limit_tickers > 0:
+                    tickers = tickers[:self.config.limit_tickers]
+                    logger.info(f"Limited to first {len(tickers)} tickers for quick testing")
             elif self.config.custom_tickers:
                 tickers = self.config.custom_tickers
             else:

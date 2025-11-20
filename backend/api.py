@@ -449,9 +449,10 @@ async def run_backtest_stream(config: BacktestConfig):
             loader = get_loader()
             if config.universe == 'sp500':
                 tickers = loader.get_sp500_tickers()
-                if hasattr(config, 'limit_tickers') and config.limit_tickers and config.limit_tickers > 0:
+                # Apply limit BEFORE data loading
+                if config.limit_tickers and config.limit_tickers > 0:
                     tickers = tickers[:config.limit_tickers]
-                    logger.info(f"Limited to first {len(tickers)} tickers for testing")
+                    logger.info(f"Limited to first {len(tickers)} tickers for quick testing")
             elif config.custom_tickers:
                 tickers = config.custom_tickers
             else:
@@ -520,6 +521,7 @@ async def run_backtest_stream(config: BacktestConfig):
             all_ticker_results = []
             all_trades_dict = {}  # Collect all trades
             last_heartbeat = asyncio.get_event_loop().time()
+            last_partial_send = 0
 
             async for ticker_result in engine.run_backtest_streaming(data_dict):
                 # Check if this is the final message with all trades
@@ -539,6 +541,50 @@ async def run_backtest_stream(config: BacktestConfig):
                     "ticker_result": ticker_result
                 })
                 yield f"data: {progress_msg}\n\n"
+                
+                # Send partial results every 50 stocks (for large backtests)
+                # This ensures we get results even if the process times out
+                if len(data_dict) > 50 and completed_count > 0 and completed_count % 50 == 0:
+                    try:
+                        from engine import BacktestEngine
+                        from models import TickerPerformance, Trade
+                        temp_engine = BacktestEngine(config)
+                        
+                        # Create TickerPerformance objects for completed stocks
+                        temp_ticker_perfs = []
+                        temp_trades_dict = {}
+                        
+                        for tr in all_ticker_results:
+                            if tr.get("success"):
+                                try:
+                                    temp_ticker_perfs.append(TickerPerformance(**tr))
+                                    # Get trades for this ticker
+                                    ticker = tr.get("ticker")
+                                    if ticker in all_trades_dict:
+                                        trades = all_trades_dict[ticker]
+                                        if trades and len(trades) > 0:
+                                            if isinstance(trades[0], dict):
+                                                temp_trades_dict[ticker] = [Trade(**t) for t in trades]
+                                            else:
+                                                temp_trades_dict[ticker] = trades
+                                except Exception as e:
+                                    logger.warning(f"Failed to create temp TickerPerformance: {e}")
+                                    continue
+                        
+                        if temp_ticker_perfs:
+                            partial_result = temp_engine._aggregate_results(temp_ticker_perfs, temp_trades_dict)
+                            partial_result.config = config
+                            
+                            partial_msg = json.dumps({
+                                "type": "partial",
+                                "completed": completed_count,
+                                "total": len(data_dict),
+                                "result": partial_result.dict()
+                            })
+                            yield f"data: {partial_msg}\n\n"
+                            logger.info(f"Sent partial results for {completed_count}/{len(data_dict)} stocks")
+                    except Exception as e:
+                        logger.warning(f"Failed to send partial results: {e}")
                 
                 # Send heartbeat every 30 seconds to keep connection alive
                 current_time = asyncio.get_event_loop().time()
