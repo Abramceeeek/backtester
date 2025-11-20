@@ -140,16 +140,30 @@ class BacktestEngine:
                 for ticker, data in data_dict.items()
             }
 
+            processed_tickers = set()  # Track processed tickers to prevent duplicates
+            
             for future in as_completed(futures):
                 ticker = futures[future]
                 try:
+                    # Validate ticker hasn't been processed already
+                    if ticker in processed_tickers:
+                        logger.warning(f"Duplicate ticker detected: {ticker}. Skipping duplicate result.")
+                        continue
+                        
                     result = future.result()
                     if result:
                         performance, trades = result
+                        
+                        # Validate ticker matches
+                        if performance.ticker != ticker:
+                            logger.warning(f"Ticker mismatch: expected {ticker}, got {performance.ticker}. Using {performance.ticker}")
+                            ticker = performance.ticker
+                        
+                        processed_tickers.add(ticker)
                         results.append(performance)
                         all_trades_dict[ticker] = trades
                 except Exception as e:
-                    logger.error(f"Failed to backtest {ticker}: {e}")
+                    logger.error(f"Failed to backtest {ticker}: {e}", exc_info=True)
 
         return results, all_trades_dict
 
@@ -169,11 +183,13 @@ class BacktestEngine:
             TickerPerformance or None if failed
         """
         try:
+            # Each ticker gets its own isolated portfolio state
             portfolio = PortfolioState(
                 cash=self.config.initial_capital,
                 equity=self.config.initial_capital
             )
 
+            # Each ticker gets its own isolated strategy state (deep copy to prevent mutation)
             strategy_state = {}
             current_position = None
             trades = []
@@ -324,7 +340,13 @@ class BacktestEngine:
                 logger.info(f"{ticker}: No trades generated")
                 return None
 
-            logger.info(f"{ticker}: Generated {len(trades)} trades")
+            # Validate all trades belong to this ticker
+            mismatched_trades = [t for t in trades if t.ticker != ticker]
+            if mismatched_trades:
+                logger.warning(f"{ticker}: Found {len(mismatched_trades)} trades with mismatched tickers. This may indicate a bug.")
+                # Note: Can't modify Pydantic models directly, but log the issue
+
+            logger.info(f"{ticker}: Generated {len(trades)} trades, Total P&L: ${sum(t.pnl for t in trades):.2f}")
             performance = self._calculate_ticker_performance(ticker, trades)
             return (performance, trades)  # Return both performance and all trades
 
@@ -405,7 +427,9 @@ class BacktestEngine:
         win_rate = winning_trades / total_trades if total_trades > 0 else 0
 
         total_pnl = sum(t.pnl for t in trades)
-        total_pnl_percent = sum(t.pnl_percent for t in trades)
+        # Calculate total_pnl_percent correctly: (total_pnl / initial_capital) * 100
+        # NOT sum of individual percentages (which are relative to each trade's entry value)
+        total_pnl_percent = (total_pnl / self.config.initial_capital) * 100 if self.config.initial_capital > 0 else 0
         avg_pnl = total_pnl / total_trades if total_trades > 0 else 0
 
         wins = [t.pnl for t in trades if t.pnl > 0]

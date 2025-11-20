@@ -43,12 +43,26 @@ class StreamingBacktestEngine(BacktestEngine):
 
         # Yield results as they complete
         all_trades_dict = {}  # Collect all trades for aggregation
+        processed_tickers = set()  # Track processed tickers to prevent duplicates
+        
         for future in as_completed(futures):
             ticker = futures[future]
             try:
+                # Validate ticker hasn't been processed already
+                if ticker in processed_tickers:
+                    logger.warning(f"Duplicate ticker detected: {ticker}. Skipping duplicate result.")
+                    continue
+                    
                 result = future.result()
                 if result:
                     performance, trades = result
+                    
+                    # Validate ticker matches
+                    if performance.ticker != ticker:
+                        logger.warning(f"Ticker mismatch: expected {ticker}, got {performance.ticker}. Using {performance.ticker}")
+                        ticker = performance.ticker
+                    
+                    processed_tickers.add(ticker)
                     all_trades_dict[ticker] = trades  # Store all trades
                     # Convert TickerPerformance to dict for JSON serialization
                     # Calculate best/worst trade from sample trades
