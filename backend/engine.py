@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from models import (
     BacktestConfig, BacktestResult, BacktestMetrics,
-    Trade, TickerPerformance, EquityPoint
+    Trade, TickerPerformance, EquityPoint, PeriodPerformance
 )
 from sandbox import get_sandbox
 from data_loader import get_loader
@@ -442,6 +442,9 @@ class BacktestEngine:
         gross_loss = abs(sum(losses)) if losses else 0
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0
 
+        best_trade = max((t.pnl for t in trades), default=0)
+        worst_trade = min((t.pnl for t in trades), default=0)
+
         # Calculate max drawdown
         equity = self.config.initial_capital
         peak = equity
@@ -470,7 +473,84 @@ class BacktestEngine:
             avg_loss=avg_loss,
             profit_factor=profit_factor,
             max_drawdown=max_dd,
+            best_trade=best_trade,
+            worst_trade=worst_trade,
             trades=sample_trades
+        )
+
+    def _calculate_period_performance(
+        self,
+        all_trades: List[Trade],
+        target_years: int,
+        start_date: str,
+        end_date: str,
+        is_partial: bool
+    ) -> PeriodPerformance:
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+
+        # Calculate equity at period start by applying prior trades
+        starting_equity = self.config.initial_capital
+        for trade in all_trades:
+            if trade.exit_date and trade.exit_date < start_date:
+                starting_equity += trade.pnl
+
+        # Build period equity curve from trade exits
+        trade_dates = {}
+        period_trades = []
+        for trade in all_trades:
+            if trade.exit_date and start_date <= trade.exit_date <= end_date:
+                trade_dates.setdefault(trade.exit_date, []).append(trade)
+                period_trades.append(trade)
+
+        equity = starting_equity
+        period_curve = [EquityPoint(date=start_date, equity=equity)]
+
+        for date in sorted(trade_dates.keys()):
+            daily_pnl = sum(t.pnl for t in trade_dates[date])
+            equity += daily_pnl
+            period_curve.append(EquityPoint(date=date, equity=equity))
+
+        if period_curve[-1].date != end_date:
+            period_curve.append(EquityPoint(date=end_date, equity=equity))
+
+        end_equity = equity
+        total_return = end_equity - starting_equity
+        total_return_percent = (total_return / starting_equity) * 100 if starting_equity > 0 else 0
+
+        years = (end_dt - start_dt).days / 365.25
+        cagr = ((end_equity / starting_equity) ** (1 / years) - 1) * 100 if years > 0 and starting_equity > 0 else 0
+
+        peak = starting_equity
+        max_dd = 0
+        max_dd_percent = 0
+        for point in period_curve:
+            if point.equity > peak:
+                peak = point.equity
+            dd = peak - point.equity
+            dd_percent = (dd / peak) * 100 if peak > 0 else 0
+            max_dd = max(max_dd, dd)
+            max_dd_percent = max(max_dd_percent, dd_percent)
+
+        total_trades = len(period_trades)
+        winning_trades = sum(1 for t in period_trades if t.pnl > 0)
+        win_rate = winning_trades / total_trades if total_trades > 0 else 0
+
+        return PeriodPerformance(
+            label=f"{target_years}Y",
+            target_years=target_years,
+            start_date=start_date,
+            end_date=end_date,
+            is_partial=is_partial,
+            start_equity=starting_equity,
+            end_equity=end_equity,
+            total_return=total_return,
+            total_return_percent=total_return_percent,
+            cagr=cagr,
+            max_drawdown=max_dd,
+            max_drawdown_percent=max_dd_percent,
+            total_trades=total_trades,
+            win_rate=win_rate
         )
 
     def _aggregate_results(
@@ -637,6 +717,25 @@ class BacktestEngine:
         # Sample trades
         sample_trades = all_trades[-20:] if len(all_trades) > 20 else all_trades
 
+        end_dt = datetime.strptime(self.config.end_date, '%Y-%m-%d')
+        period_performance = []
+        for years in [10, 5, 1]:
+            target_start_dt = end_dt - timedelta(days=int(365.25 * years))
+            config_start_dt = datetime.strptime(self.config.start_date, '%Y-%m-%d')
+            start_dt = max(target_start_dt, config_start_dt)
+            is_partial = target_start_dt < config_start_dt
+            if (end_dt - start_dt).days < 30:
+                continue
+            period_performance.append(
+                self._calculate_period_performance(
+                    all_trades,
+                    years,
+                    start_dt.strftime('%Y-%m-%d'),
+                    self.config.end_date,
+                    is_partial
+                )
+            )
+
         return BacktestResult(
             success=True,
             message="Backtest completed successfully",
@@ -645,5 +744,6 @@ class BacktestEngine:
             ticker_performance=ticker_results,
             top_performers=top_performers,
             worst_performers=worst_performers,
-            sample_trades=sample_trades
+            sample_trades=sample_trades,
+            period_performance=period_performance
         )

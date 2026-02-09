@@ -96,6 +96,8 @@ class TickerPerformance(BaseModel):
     avg_loss: float
     profit_factor: float
     max_drawdown: float
+    best_trade: float
+    worst_trade: float
     trades: List[Trade] = Field(default_factory=list, description="Sample trades (max 10)")
 
 
@@ -137,6 +139,25 @@ class BacktestMetrics(BaseModel):
     consecutive_losses: int
 
 
+class PeriodPerformance(BaseModel):
+    """Performance metrics for a specific lookback window."""
+
+    label: str
+    target_years: int
+    start_date: str
+    end_date: str
+    is_partial: bool
+    start_equity: float
+    end_equity: float
+    total_return: float
+    total_return_percent: float
+    cagr: float
+    max_drawdown: float
+    max_drawdown_percent: float
+    total_trades: int
+    win_rate: float
+
+
 class BacktestResult(BaseModel):
     """Complete backtest result."""
 
@@ -149,6 +170,7 @@ class BacktestResult(BaseModel):
     top_performers: List[TickerPerformance] = Field(default_factory=list, description="Top 10 best performing tickers")
     worst_performers: List[TickerPerformance] = Field(default_factory=list, description="Top 10 worst performing tickers")
     sample_trades: List[Trade] = Field(default_factory=list, description="Sample of recent trades")
+    period_performance: List[PeriodPerformance] = Field(default_factory=list)
     execution_time: Optional[float] = None
 
 
