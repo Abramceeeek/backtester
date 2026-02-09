@@ -65,10 +65,7 @@ class StreamingBacktestEngine(BacktestEngine):
                     processed_tickers.add(ticker)
                     all_trades_dict[ticker] = trades  # Store all trades
                     # Convert TickerPerformance to dict for JSON serialization
-                    # Calculate best/worst trade from sample trades
                     sample_trades = performance.trades or []
-                    best_trade = max((t.pnl for t in sample_trades), default=0) if sample_trades else 0
-                    worst_trade = min((t.pnl for t in sample_trades), default=0) if sample_trades else 0
                     
                     yield {
                         "success": True,
@@ -84,8 +81,8 @@ class StreamingBacktestEngine(BacktestEngine):
                         "avg_loss": performance.avg_loss,
                         "profit_factor": performance.profit_factor,
                         "max_drawdown": performance.max_drawdown,
-                        "best_trade": best_trade,
-                        "worst_trade": worst_trade,
+                        "best_trade": performance.best_trade,
+                        "worst_trade": performance.worst_trade,
                         "trades": [
                             {
                                 "ticker": t.ticker,
